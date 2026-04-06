@@ -1,0 +1,160 @@
+---
+title: "uv"
+description: "Use uv with a uv.lock file to manage Python dependencies on Heroku. Recommended for all new apps."
+---
+
+uv is the recommended package manager for Python apps on Heroku. It is significantly faster than alternatives, produces a fully reproducible lockfile, provides clear error messages, and is actively maintained by a dedicated team at Astral.
+
+The buildpack detects uv when it finds a `uv.lock` file in your repository root.
+
+<Tip>
+If you are starting a new Python app or considering switching package managers, use uv. It offers the best developer experience and the fastest builds.
+</Tip>
+
+## Detection
+
+The buildpack uses uv when `uv.lock` exists in the root directory of your app.
+
+<Warning>
+Only one package manager file should be present. If the buildpack finds multiple (e.g., both `uv.lock` and `requirements.txt`), the build will fail with an error.
+</Warning>
+
+## uv version
+
+The buildpack downloads and manages uv automatically. The current version is **0.11.3**.
+
+uv is downloaded from `releases.astral.sh` and cached between builds. You do not need to install or configure it yourself.
+
+## Setup
+
+<Steps>
+  <Step title="Install uv locally">
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+  </Step>
+  <Step title="Initialise your project">
+    ```bash
+    uv init my-app
+    cd my-app
+    ```
+
+    Or initialise in an existing directory:
+
+    ```bash
+    uv init
+    ```
+  </Step>
+  <Step title="Pin your Python version">
+    A `.python-version` file is required when using uv on Heroku.
+
+    ```bash
+    uv python pin 3.13
+    ```
+
+    This creates a `.python-version` file containing `3.13`.
+  </Step>
+  <Step title="Add your dependencies">
+    ```bash
+    uv add flask gunicorn
+    ```
+
+    This updates `pyproject.toml` and `uv.lock`.
+  </Step>
+  <Step title="Commit the required files">
+    ```bash
+    git add pyproject.toml uv.lock .python-version
+    git commit -m "Add uv dependency files"
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    git push heroku main
+    ```
+  </Step>
+</Steps>
+
+## Python version
+
+A `.python-version` file in your repository root is **required** when using uv. The buildpack reads this file to determine which Python version to install.
+
+```bash
+# Pin to a specific minor version (resolves to the latest patch at build time)
+uv python pin 3.13
+
+# Pin to an exact patch version for fully reproducible builds
+uv python pin 3.13.2
+```
+
+<Warning>
+If `.python-version` is missing, the build will fail. Make sure the file is committed to your repository and not listed in `.gitignore`.
+</Warning>
+
+## Dev dependencies
+
+Dev dependencies are **not** installed on production deployments. The buildpack runs:
+
+```bash
+uv sync --locked --no-default-groups --compile-bytecode
+```
+
+`--no-default-groups` omits all [dependency groups](https://docs.astral.sh/uv/concepts/projects/dependencies/#dependency-groups) (such as `dev`) and installs only the project's direct and transitive production dependencies. `--compile-bytecode` generates `.pyc` files during the build to reduce app startup time.
+
+All default dependency groups are installed when running tests on Heroku CI.
+
+## What the buildpack installs
+
+During each build, the buildpack:
+
+1. Downloads uv 0.11.3 from `releases.astral.sh` into the build cache (or reuses the cached binary if the version is unchanged).
+2. Runs `uv sync --locked --no-default-groups --compile-bytecode` to install production dependencies from the lockfile.
+
+Site-packages are cached between builds. uv reports which packages were added or removed since the last successful build.
+
+## Hard links
+
+The buildpack configures uv to use hard links (`UV_LINK_MODE=hardlink`) when installing packages. This avoids redundant file copies and makes installs faster. The uv cache is stored in `/tmp` during standard Heroku builds to ensure that the cache and the build directory are on the same filesystem, which is required for hard links to work.
+
+## Common workflow
+
+```bash
+# Add a new package
+uv add requests
+
+# Remove a package
+uv remove requests
+
+# Update all packages to their latest allowed versions
+uv lock --upgrade
+
+# Update a single package
+uv lock --upgrade-package requests
+
+# Regenerate the lockfile after editing pyproject.toml manually
+uv lock
+
+# Commit changes
+git add pyproject.toml uv.lock
+git commit -m "Update dependencies"
+git push heroku main
+```
+
+## Common errors
+
+### Missing .python-version
+
+The buildpack requires a `.python-version` file when uv is the detected package manager.
+
+**Fix:** Run `uv python pin 3.13` (or your desired version) and commit the resulting `.python-version` file.
+
+### Lockfile out of date
+
+```
+error: The lockfile at `uv.lock` needs to be updated, but `--locked` was provided.
+```
+
+**Fix:** Run `uv lock` locally to regenerate the lockfile, commit `uv.lock`, and redeploy.
+
+### Multiple package manager files
+
+If you have both a `uv.lock` and another package manager file, the build will fail. Remove the files belonging to the package manager you are no longer using.

@@ -1,0 +1,81 @@
+---
+title: "Heroku Buildpack: Python"
+description: "The official Heroku buildpack for Python applications. Automatically detects, installs, and configures Python and your dependencies for deployment on Heroku."
+---
+
+The Heroku Python buildpack handles everything needed to deploy a Python application — from selecting the right Python version, to installing your dependencies, to configuring the runtime environment. It supports pip, Pipenv, Poetry, and uv as package managers, and works out of the box with frameworks like Django and Flask.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy your first Python app to Heroku in minutes
+  </Card>
+  <Card title="Python Version" icon="python" href="/configuration/python-version">
+    Configure which Python version your app uses
+  </Card>
+  <Card title="Package Managers" icon="box" href="/configuration/package-managers">
+    Choose between pip, Pipenv, Poetry, or uv
+  </Card>
+  <Card title="Django Support" icon="layer-group" href="/features/django">
+    Automatic collectstatic and Django-specific configuration
+  </Card>
+</CardGroup>
+
+## How it works
+
+When you push your Python app to Heroku, the buildpack runs automatically as part of the slug compilation process:
+
+<Steps>
+  <Step title="Detection">
+    The buildpack detects your app as Python-based by looking for common Python project files in your repository root — including `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock`, `pyproject.toml`, `manage.py`, `app.py`, `.python-version`, and others. A package manager file is still required for the build to succeed.
+  </Step>
+  <Step title="Python installation">
+    The buildpack reads your requested Python version from `.python-version` (or falls back to a default) and downloads the correct Python runtime for your Heroku stack.
+  </Step>
+  <Step title="Dependency installation">
+    Your package manager is detected and used to install all application dependencies into an isolated environment.
+  </Step>
+  <Step title="Build steps">
+    Optional build steps run: Django's `collectstatic`, NLTK corpus downloads, and any custom `bin/pre_compile` or `bin/post_compile` hooks.
+  </Step>
+  <Step title="Runtime configuration">
+    Environment variables (`PATH`, `PYTHONHOME`, `PYTHONPATH`, etc.) and profile scripts are written so your app runs correctly at runtime.
+  </Step>
+</Steps>
+
+## Supported Python versions
+
+| Version | Status |
+|---------|--------|
+| Python 3.14 | Supported (default) |
+| Python 3.13 | Supported |
+| Python 3.12 | Supported |
+| Python 3.11 | Supported |
+| Python 3.10 | Deprecated (EOL October 2026) |
+
+<Note>
+Python versions older than 3.10 are no longer supported, as they have reached end-of-life upstream. See [Python version configuration](/configuration/python-version) for upgrade guidance.
+</Note>
+
+## Supported stacks
+
+The buildpack supports the following Heroku stacks:
+
+- **Heroku-24** (Ubuntu 24.04) — recommended
+- **Heroku-22** (Ubuntu 22.04)
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="uv support" icon="bolt" href="/package-managers/uv">
+    The fastest Python package manager with full lockfile support
+  </Card>
+  <Card title="Build cache" icon="database" href="/operations/caching">
+    Intelligent caching reduces build times on repeated deploys
+  </Card>
+  <Card title="Build hooks" icon="code" href="/features/build-hooks">
+    Run custom scripts before and after dependency installation
+  </Card>
+  <Card title="Web concurrency" icon="server" href="/features/web-concurrency">
+    Automatic Gunicorn worker configuration based on dyno size
+  </Card>
+</CardGroup>

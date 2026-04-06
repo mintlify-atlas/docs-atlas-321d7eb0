@@ -1,0 +1,83 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Heroku Buildpack: Python",
+  "projectDescription": "The official Heroku buildpack that detects and builds Python applications, installing the appropriate Python version and dependencies via pip, Pipenv, Poetry, or uv.",
+  "theme": "aspen",
+  "primaryColor": "#040404",
+  "lightColor": "#0c9cdc",
+  "darkColor": "#9373b6",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/python-version",
+              "configuration/package-managers",
+              "configuration/environment-variables"
+            ]
+          },
+          {
+            "group": "Package Managers",
+            "pages": [
+              "package-managers/pip",
+              "package-managers/pipenv",
+              "package-managers/poetry",
+              "package-managers/uv"
+            ]
+          },
+          {
+            "group": "Frameworks & Features",
+            "pages": [
+              "features/django",
+              "features/nltk",
+              "features/build-hooks",
+              "features/web-concurrency"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/caching",
+              "operations/troubleshooting",
+              "operations/changelog"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automatic Python version resolution from .python-version, runtime.txt, or Pipfile.lock",
+    "Support for pip, Pipenv, Poetry, and uv package managers",
+    "Build cache with automatic invalidation on Python version, stack, or package manager changes",
+    "Django collectstatic automatic execution during build",
+    "NLTK corpus downloader via nltk.txt",
+    "Pre/post compile build hooks (bin/pre_compile and bin/post_compile)",
+    "Automatic WEB_CONCURRENCY configuration for Gunicorn",
+    "Supported stacks: heroku-22, heroku-24"
+  ],
+  "publicApiSurface": [
+    "bin/compile <build-dir> <cache-dir> <env-dir>",
+    "bin/detect <build-dir>",
+    "bin/release <build-dir>",
+    "bin/report <build-dir> <cache-dir> <env-dir>",
+    ".python-version file",
+    "runtime.txt file (deprecated)",
+    "nltk.txt file",
+    "bin/pre_compile hook",
+    "bin/post_compile hook",
+    "DISABLE_COLLECTSTATIC env var",
+    "DEBUG_COLLECTSTATIC env var",
+    "BUILDPACK_XTRACE env var"
+  ]
+}

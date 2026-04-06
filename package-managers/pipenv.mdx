@@ -1,0 +1,123 @@
+---
+title: "Pipenv"
+description: "Use Pipenv with a Pipfile.lock to manage Python dependencies on Heroku."
+---
+
+Pipenv combines package management and virtual environment handling into a single tool. The buildpack detects Pipenv when it finds a `Pipfile.lock` file in your repository root.
+
+## Detection
+
+The buildpack uses Pipenv when `Pipfile.lock` exists in the root directory of your app.
+
+<Warning>
+A `Pipfile` without a `Pipfile.lock` will cause the build to fail. You must commit the lockfile.
+
+```
+Error: No 'Pipfile.lock' found!
+```
+
+Run `pipenv lock` locally and commit `Pipfile.lock` before deploying.
+</Warning>
+
+## Pipenv version
+
+The buildpack installs and manages Pipenv automatically. The current version is **2026.5.1**.
+
+You do not need to pin the Pipenv version yourself — the buildpack keeps it up to date.
+
+## Setup
+
+<Steps>
+  <Step title="Install Pipenv locally">
+    ```bash
+    pip install pipenv
+    ```
+  </Step>
+  <Step title="Add your dependencies">
+    ```bash
+    pipenv install flask gunicorn
+    ```
+
+    This updates both `Pipfile` and `Pipfile.lock`.
+  </Step>
+  <Step title="Commit both files">
+    ```bash
+    git add Pipfile Pipfile.lock
+    git commit -m "Add Pipenv dependency files"
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    git push heroku main
+    ```
+  </Step>
+</Steps>
+
+## Python version
+
+Pipenv reads the Python version from the `._meta.requires` section of `Pipfile.lock`. The buildpack respects either field if present:
+
+- `python_full_version` — an exact version, e.g. `"3.13.2"`
+- `python_version` — a major version, e.g. `"3.13"`
+
+To set the Python version when generating the lockfile:
+
+```bash
+pipenv --python 3.13 install
+pipenv lock
+```
+
+<Tip>
+Prefer `python_full_version` over `python_version` for fully reproducible builds. A full version like `3.13.2` pins the exact Python runtime, while a minor version like `3.13` will resolve to whatever the latest `3.13.x` release is at build time.
+</Tip>
+
+## Dev dependencies
+
+Dev dependencies are **not** installed on production deployments. The buildpack runs:
+
+```bash
+pipenv install --deploy
+```
+
+The `--deploy` flag aborts the build if `Pipfile.lock` is out of date relative to `Pipfile`. The buildpack also sets `PIPENV_SYSTEM=1` via an environment variable, which instructs Pipenv to install packages directly into the Python environment rather than creating a separate virtual environment.
+
+Dev dependencies are installed when running tests on Heroku CI (via `--dev`).
+
+## What the buildpack installs
+
+During each build, the buildpack:
+
+1. Installs Pipenv 2026.5.1 into a dedicated virtual environment (under `.heroku/python/pipenv/`), then symlinks the `pipenv` binary.
+2. Runs `pipenv install --deploy` (with `PIPENV_SYSTEM=1`) to install production dependencies from the lockfile into the system Python environment.
+
+Pipenv is stored in the app's Python home directory (not the build cache) so that it remains available at runtime. This allows `pipenv run` commands in your Procfile to work as expected.
+
+## Private packages
+
+To install packages from a private index, set the `PIP_EXTRA_INDEX_URL` config var on your Heroku app:
+
+```bash
+heroku config:set PIP_EXTRA_INDEX_URL=https://your-private-index.example.com/simple/
+```
+
+## Common errors
+
+### Pipfile without Pipfile.lock
+
+```
+Error: No 'Pipfile.lock' found!
+```
+
+**Fix:** Run `pipenv lock` locally and commit `Pipfile.lock`. Make sure it is not listed in `.gitignore` or `.slugignore`.
+
+### Lockfile out of date
+
+```
+Your Pipfile.lock is out of date. Run `pipenv lock` to update.
+```
+
+**Fix:** Run `pipenv lock` locally, commit the updated `Pipfile.lock`, and redeploy.
+
+### Multiple package manager files
+
+If you have both a `Pipfile.lock` and another package manager file (such as `requirements.txt`), the build will fail. Remove the files you are not using.

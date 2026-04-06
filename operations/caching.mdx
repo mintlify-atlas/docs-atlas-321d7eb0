@@ -1,0 +1,78 @@
+---
+title: "Build cache"
+description: "How the Python buildpack caches Python, the package manager, and installed dependencies across builds to speed up deployments."
+---
+
+The buildpack caches Python and your installed dependencies between builds so that subsequent deploys only reinstall what has changed. On a warm cache build, the buildpack skips downloading and installing Python entirely and restores your previous `site-packages` directly.
+
+## What is cached
+
+The following are written to the cache at the end of each successful build and restored at the start of the next:
+
+- The full Python installation (interpreter, standard library, headers)
+- The package manager tooling (pip, Pipenv, Poetry, or uv)
+- All installed application dependencies (the `site-packages` tree)
+
+The cache is stored in the `CACHE_DIR` directory passed as the second argument to `bin/compile`. On the Heroku platform this directory persists between builds for the same app and stack.
+
+## Cache restore
+
+At the start of each build the buildpack reads the metadata written by the previous build and decides whether the existing cache can be reused. If reuse is safe, the Python directory is moved directly into the build directory — no network requests, no reinstallation.
+
+If any invalidation condition is met (see below), the cache is discarded and a clean install is performed.
+
+## Cache invalidation triggers
+
+The cache is discarded and a full reinstall is performed when any of the following changes are detected:
+
+| Trigger | Example |
+|---|---|
+| Stack change | `heroku-22` → `heroku-24` |
+| Python version change | `3.12.x` → `3.13.x` |
+| Package manager change | `pip` → `uv` |
+| Package manager version change | pip `25.3` → `26.0.1` |
+| `requirements.txt` content change (pip only) | Any line added, removed, or modified |
+| `Pipfile.lock` content change (Pipenv only) | Lockfile checksum mismatch |
+| Legacy cache format | First build after upgrading from buildpack v251 or older |
+| Legacy SQLite3 headers present | Automatic cleanup of old cache artefacts |
+
+<Note>
+pip invalidates on any change to `requirements.txt` because pip does not uninstall packages that are removed from the file. Other package managers (Pipenv, Poetry, uv) manage their environments deterministically and do not require this check.
+</Note>
+
+## Cache save
+
+At the end of every successful build, the buildpack saves the current Python installation and dependencies back to `CACHE_DIR`. Additional metadata files are written alongside the cache so the next build can verify compatibility:
+
+- `CACHE_DIR/.heroku/python-stack` — the Heroku stack name
+- `CACHE_DIR/.heroku/python-version` — the full Python version (e.g. `python-3.13.2`)
+- `CACHE_DIR/.heroku/requirements.txt` — copy of `requirements.txt` (pip only)
+- `CACHE_DIR/.heroku/python/Pipfile.lock.sha256` — lockfile checksum (Pipenv only)
+
+## Cache status values
+
+The buildpack records one of three cache statuses per build:
+
+| Status | Meaning |
+|---|---|
+| `empty` | No usable cache was found (first build, or after a purge) |
+| `reused` | The cache was valid and restored without reinstalling |
+| `discarded` | The cache existed but was invalidated; a fresh install was performed |
+
+## Clearing the cache
+
+To force a clean build, purge the build cache and redeploy:
+
+```bash
+heroku builds:cache:purge -a <app-name>
+git commit --allow-empty -m "Force clean build"
+git push heroku main
+```
+
+<Warning>
+Purging the cache means the next build will download and install Python and all dependencies from scratch. Build times will be longer than usual until the cache is warm again.
+</Warning>
+
+## Empty cache state
+
+On the very first build of an app, or after a cache purge, the buildpack starts with no cache. It downloads Python, installs the package manager, and installs all dependencies. The resulting artefacts are then saved to the cache so the next build can benefit from them.

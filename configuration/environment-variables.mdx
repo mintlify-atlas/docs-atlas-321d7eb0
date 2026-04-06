@@ -1,0 +1,123 @@
+---
+title: "Environment variables"
+description: "Environment variables you can set to configure the Heroku Python buildpack, and variables the buildpack sets automatically at build and runtime."
+---
+
+## User-configurable variables
+
+These variables can be set as [Heroku config vars](https://devcenter.heroku.com/articles/config-vars) to change buildpack behaviour.
+
+### Build-time variables
+
+<ParamField path="BUILDPACK_XTRACE" type="string">
+  Set to `1` to enable Bash `xtrace` (`set -x`) in the buildpack's compile script. Every command executed during the build is printed to the build log, which is useful for debugging unexpected build failures.
+
+  ```bash
+  heroku config:set BUILDPACK_XTRACE=1
+  ```
+
+  <Note>
+    This variable is read before the app's config vars are loaded from `ENV_DIR`. It must be set as a Heroku config var to take effect — it cannot be passed only at the shell level during a local run.
+  </Note>
+</ParamField>
+
+<ParamField path="DISABLE_COLLECTSTATIC" type="string">
+  Set to `1` to skip the automatic `python manage.py collectstatic` step for Django apps.
+
+  ```bash
+  heroku config:set DISABLE_COLLECTSTATIC=1
+  ```
+
+  Use this if your app does not use Django's static file system, or if you run `collectstatic` yourself in a post-compile hook or CI pipeline.
+</ParamField>
+
+<ParamField path="DEBUG_COLLECTSTATIC" type="string">
+  Set to `1` to print all environment variables to the build log when `collectstatic` fails. This can help diagnose missing settings or misconfigured storage backends.
+
+  ```bash
+  heroku config:set DEBUG_COLLECTSTATIC=1
+  ```
+
+  <Warning>
+    The output may include sensitive values from your config vars. Review your build logs carefully and unset this variable once you have resolved the issue.
+  </Warning>
+</ParamField>
+
+<ParamField path="WEB_CONCURRENCY" type="integer">
+  Override the number of web server worker processes. By default, the buildpack calculates this automatically at dyno boot based on available memory and CPU cores (see [WEB_CONCURRENCY](#web_concurrency) below). Setting this config var disables the automatic calculation.
+
+  ```bash
+  heroku config:set WEB_CONCURRENCY=4
+  ```
+
+  Alternatively, pass `--workers <num>` directly when invoking gunicorn or uvicorn in your `Procfile`:
+
+  ```text Procfile
+  web: gunicorn myapp.wsgi --workers 4
+  ```
+</ParamField>
+
+---
+
+## Automatically set variables
+
+The buildpack sets the following variables automatically. You do not need to configure them.
+
+### Build-time
+
+These variables are exported during `bin/compile` so that native extension builds (e.g. packages with C extensions) work correctly. They are not part of the runtime environment.
+
+| Variable            | Value set during build                         | Purpose                                               |
+| ------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| `PYTHONUNBUFFERED`  | `1`                                            | Disables stdout/stdin buffering so build logs appear in real time. |
+| `LANG`              | `en_US.UTF-8`                                  | Sets a Unicode locale to prevent encoding-related issues. |
+| `C_INCLUDE_PATH`    | `/app/.heroku/python/include:…`                | Allows C extensions to find Python headers.           |
+| `CPLUS_INCLUDE_PATH`| `/app/.heroku/python/include:…`                | Allows C++ extensions to find Python headers.         |
+| `LIBRARY_PATH`      | `/app/.heroku/python/lib:…`                    | Linker search path for shared libraries.              |
+| `LD_LIBRARY_PATH`   | `/app/.heroku/python/lib:…`                    | Runtime shared library search path.                   |
+| `PKG_CONFIG_PATH`   | `/app/.heroku/python/lib/pkg-config:…`         | Allows `pkg-config` to locate Python libraries.       |
+
+### Runtime (`.profile.d/python.sh`)
+
+The buildpack writes a `.profile.d/python.sh` script that is sourced at dyno boot. It sets the following variables in the runtime environment of every dyno:
+
+| Variable          | Value at runtime               | Purpose                                                          |
+| ----------------- | ------------------------------ | ---------------------------------------------------------------- |
+| `PATH`            | `$HOME/.heroku/python/bin:…`   | Makes Python, pip, and installed package scripts available.      |
+| `PYTHONUNBUFFERED`| `true`                         | Disables stdout/stdin buffering.                                 |
+| `PYTHONHOME`      | `$HOME/.heroku/python`         | Tells Python where its standard library and site-packages are.   |
+| `PYTHONPATH`      | `$HOME` (default, only if not already set) | Makes your app's source code importable as a Python module. |
+| `LANG`            | `en_US.UTF-8` (default, only if not already set) | Ensures a Unicode locale.                           |
+| `LIBRARY_PATH`    | `$HOME/.heroku/python/lib:…`   | Shared library search path.                                      |
+| `LD_LIBRARY_PATH` | `$HOME/.heroku/python/lib:…`   | Runtime shared library loader path.                              |
+
+### WEB_CONCURRENCY
+
+The buildpack installs a separate `.profile.d/WEB_CONCURRENCY.sh` script that runs at dyno boot and sets `WEB_CONCURRENCY` automatically if it is not already defined.
+
+The value is the **lower** of:
+
+- `(number of CPU cores × 2) + 1`
+- `available RAM in MB ÷ 256` (ensures at least 256 MB per worker process)
+
+This results in the following defaults on standard Heroku dyno types:
+
+| Dyno type                                          | WEB_CONCURRENCY |
+| -------------------------------------------------- | --------------- |
+| Eco / Basic / Standard-1X (512 MB)                 | 2               |
+| Standard-2X / Private-S / Shield-S (1 GB)          | 4               |
+| Performance-M / Private-M / Shield-M (2 CPU cores) | 5               |
+| Performance-L / Private-L / Shield-L (8 CPU cores) | 17              |
+| Performance-L-RAM / Private-L-RAM / Shield-L-RAM   | 9               |
+| Performance-XL / Private-XL / Shield-XL            | 17              |
+| Performance-2XL / Private-2XL / Shield-2XL         | 33              |
+
+`WEB_CONCURRENCY` is used by gunicorn and uvicorn as the default worker count when no explicit `--workers` flag is passed.
+
+<ParamField path="WEB_CONCURRENCY_SET_BY" type="string">
+  Set to `"heroku/python"` when `WEB_CONCURRENCY` is configured automatically by the buildpack. If you override `WEB_CONCURRENCY` with your own config var, `WEB_CONCURRENCY_SET_BY` is not set, allowing you to distinguish between user-provided and buildpack-provided values in your application code or monitoring tooling.
+</ParamField>
+
+<Note>
+  `WEB_CONCURRENCY` is only logged to stderr for `web.*` dynos. One-off and worker dynos still receive the variable but the buildpack does not print a message, to avoid polluting unrelated dyno output.
+</Note>

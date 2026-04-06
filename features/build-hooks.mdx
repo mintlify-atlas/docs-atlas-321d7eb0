@@ -1,0 +1,123 @@
+---
+title: "Build hooks"
+description: "Run custom scripts before or after dependency installation using pre_compile and post_compile hooks."
+---
+
+Build hooks let you run arbitrary shell scripts at specific points in the build process. The Python buildpack supports two hooks: `bin/pre_compile` and `bin/post_compile`.
+
+## Hook locations
+
+Place hook scripts in the `bin/` directory at the root of your repository:
+
+```
+your-app/
+├── bin/
+│   ├── pre_compile      ← runs before Python and dependencies are installed
+│   └── post_compile     ← runs after all build steps complete
+├── requirements.txt
+└── Procfile
+```
+
+Neither file is required. The buildpack only runs a hook if the file exists.
+
+## When each hook runs
+
+| Hook            | Runs when                                                               |
+| --------------- | ----------------------------------------------------------------------- |
+| `pre_compile`   | Before Python is installed and before any dependencies are installed    |
+| `post_compile`  | After Python, dependencies, collectstatic, NLTK, and all build steps   |
+
+The full build order is:
+
+<Steps>
+  <Step title="pre_compile hook">
+    `bin/pre_compile` is executed if present. Python has not yet been installed at this point.
+  </Step>
+  <Step title="Python installation">
+    The buildpack downloads and installs the requested Python version.
+  </Step>
+  <Step title="Package manager and dependency installation">
+    The buildpack installs the package manager (pip, Pipenv, Poetry, or uv) and runs dependency installation.
+  </Step>
+  <Step title="Additional build steps">
+    Django collectstatic and NLTK corpus download run (if applicable).
+  </Step>
+  <Step title="post_compile hook">
+    `bin/post_compile` is executed if present. Python and all dependencies are available at this point.
+  </Step>
+</Steps>
+
+## Permissions
+
+The buildpack automatically runs `chmod +x` on the hook script before executing it, so you do not need to commit the file with the executable bit set.
+
+## Environment variables
+
+Hooks run via `sub_env`, which makes all of your app's **config vars available as environment variables** during the script. You can read Heroku config vars in your hook scripts just as you would in your application code.
+
+## Exit codes
+
+If a hook script exits with a non-zero status, **the build fails immediately** with an error message pointing to the script. Ensure your scripts exit cleanly on success.
+
+## Working directory
+
+Hooks execute with the **build directory** (`BUILD_DIR`) as the working directory. This is the root of your checked-out repository, equivalent to `/app` at runtime.
+
+## Examples
+
+<CodeGroup>
+
+```bash bin/pre_compile
+#!/usr/bin/env bash
+# Example: print a message before dependency installation
+set -euo pipefail
+
+echo "Running pre_compile hook..."
+echo "Node version: $(node --version 2>/dev/null || echo 'not installed')"
+```
+
+```bash bin/post_compile
+#!/usr/bin/env bash
+# Example: compile frontend assets after Python deps are installed
+set -euo pipefail
+
+echo "-----> Compiling frontend assets"
+
+# Config vars are available here — e.g. $NODE_ENV
+if [[ "${SKIP_ASSETS:-0}" == "1" ]]; then
+  echo "       Skipping asset compilation (SKIP_ASSETS=1)"
+  exit 0
+fi
+
+npm run build
+```
+
+</CodeGroup>
+
+<Note>
+Both examples use `set -euo pipefail`. This is strongly recommended so that any command failure inside the hook causes the script to exit with a non-zero status and fails the build with a clear error.
+</Note>
+
+## Common use cases
+
+<AccordionGroup>
+  <Accordion title="Compile frontend assets">
+    Use `post_compile` to run `npm run build` or another frontend build tool after your Python dependencies are available. If your app also uses the Node.js buildpack, the Node buildpack's hook may be more appropriate — check the [multi-buildpack documentation](https://devcenter.heroku.com/articles/using-multiple-buildpacks-for-an-app).
+  </Accordion>
+
+  <Accordion title="Download additional files">
+    Use `pre_compile` or `post_compile` to fetch model files, certificates, or other assets that are too large for your repository. Store their URLs in config vars and read them inside the hook.
+  </Accordion>
+
+  <Accordion title="Run database migrations">
+    Using `post_compile` for migrations is possible but strongly discouraged. Migrations run during every build, including slug compilation on review apps and CI runs. Prefer running migrations in your `release` phase command in the Procfile:
+
+    ```
+    release: python manage.py migrate
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+Hook scripts that perform side effects (such as database writes) run on **every build**, not just deploys. Use the [release phase](https://devcenter.heroku.com/articles/release-phase) for operations that should only run once per deployment.
+</Warning>

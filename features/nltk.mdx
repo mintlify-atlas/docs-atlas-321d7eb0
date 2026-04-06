@@ -1,0 +1,97 @@
+---
+title: "NLTK corpus downloader"
+description: "How the Python buildpack automatically downloads NLTK corpora at build time when an nltk.txt file is present."
+---
+
+The Python buildpack can download [NLTK](https://www.nltk.org/) corpora during the build so they are available at runtime without any additional setup.
+
+## How it works
+
+The downloader activates when **both** of the following are true:
+
+1. `nltk` is installed (importable in the build environment)
+2. An `nltk.txt` file exists in your app's root directory
+
+When triggered, the buildpack runs:
+
+```bash
+python -m nltk.downloader -d .heroku/python/nltk_data <corpus> [<corpus> ...]
+```
+
+The `NLTK_DATA` environment variable is then set automatically so NLTK can locate the downloaded data at runtime:
+
+```
+NLTK_DATA=/app/.heroku/python/nltk_data
+```
+
+<Note>
+If NLTK is installed but no `nltk.txt` file is found, the build step is skipped and the following message is printed:
+
+```
+'nltk.txt' not found, not downloading any corpora
+```
+</Note>
+
+## nltk.txt format
+
+Create a file named `nltk.txt` in the root of your repository. List one corpus name per line:
+
+```text
+punkt
+stopwords
+wordnet
+averaged_perceptron_tagger
+```
+
+Blank lines are ignored. Each name must exactly match an NLTK corpus or model identifier.
+
+### Common corpus names
+
+| Name                          | Description                                      |
+| ----------------------------- | ------------------------------------------------ |
+| `punkt`                       | Punkt sentence tokenizer                         |
+| `punkt_tab`                   | Punkt tokenizer (tabular format, NLTK ≥ 3.9)    |
+| `stopwords`                   | Common stopword lists for many languages         |
+| `wordnet`                     | WordNet lexical database                         |
+| `averaged_perceptron_tagger`  | Part-of-speech tagger                            |
+| `maxent_ne_chunker`           | Named entity chunker                             |
+| `words`                       | English word list corpus                         |
+
+For a full list of available identifiers, see the [NLTK data index](https://www.nltk.org/nltk_data/).
+
+## Example
+
+A minimal setup for a sentiment-analysis app:
+
+<CodeGroup>
+
+```text nltk.txt
+punkt
+stopwords
+wordnet
+```
+
+```python app.py
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+
+# NLTK_DATA is set by the buildpack — no manual path configuration needed.
+sia = SentimentIntensityAnalyzer()
+print(sia.polarity_scores("Heroku is great!"))
+```
+
+</CodeGroup>
+
+## Download location
+
+Corpora are stored under `.heroku/python/nltk_data/` inside the slug. At runtime this resolves to:
+
+```
+/app/.heroku/python/nltk_data/
+```
+
+The `NLTK_DATA` env var is written to `.profile.d/python.sh` so it is available to every dyno process automatically — you do not need to set it yourself.
+
+<Warning>
+NLTK's downloader fetches data from the internet during the build. Ensure any required corpora are listed in `nltk.txt`; they cannot be downloaded at runtime on Heroku without an outbound HTTP connection.
+</Warning>

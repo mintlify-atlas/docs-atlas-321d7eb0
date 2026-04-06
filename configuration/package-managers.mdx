@@ -1,0 +1,142 @@
+---
+title: "Package managers"
+description: "How the Heroku Python buildpack detects and uses pip, pipenv, Poetry, or uv to install your app's dependencies."
+---
+
+The buildpack supports four Python package managers: **pip**, **Pipenv**, **Poetry**, and **uv**. It detects which one to use by looking for a specific lockfile or requirements file in the root directory of your app.
+
+<Tip>
+  uv is the recommended package manager. It supports lockfiles, produces more helpful error messages, and is actively maintained by a dedicated full-time team. See the [uv documentation](https://docs.astral.sh/uv/) to get started.
+</Tip>
+
+## Detection
+
+The buildpack reads the root directory of your repository and checks for the following files:
+
+| File              | Package manager |
+| ----------------- | --------------- |
+| `requirements.txt` | pip            |
+| `Pipfile.lock`    | Pipenv          |
+| `poetry.lock`     | Poetry          |
+| `uv.lock`         | uv              |
+
+Exactly one of these files must be present. The buildpack does not guess or fall back silently.
+
+<Note>
+  The detection files are case-sensitive. `Requirements.txt` or `pipfile.lock` will not be recognised.
+</Note>
+
+## Package manager details
+
+<Tabs>
+  <Tab title="pip">
+    pip is detected by the presence of a `requirements.txt` file. This is the simplest option and works well for apps with no complex dependency resolution requirements.
+
+    Create a `requirements.txt` file in the root of your app listing your dependencies:
+
+    ```text requirements.txt
+    flask==3.1.0
+    gunicorn==23.0.0
+    ```
+
+    If your app has no dependencies, create an empty `requirements.txt` file:
+
+    ```bash
+    touch requirements.txt
+    ```
+
+    To install a local package in editable mode (previously done implicitly via `setup.py`), add the following to `requirements.txt`:
+
+    ```text requirements.txt
+    --editable .
+    ```
+  </Tab>
+  <Tab title="Pipenv">
+    Pipenv is detected by the presence of a `Pipfile.lock` file. The `Pipfile.lock` file must be committed to your repository — a `Pipfile` without a lockfile is not supported and causes a build error.
+
+    Generate your lockfile locally before deploying:
+
+    ```bash
+    pipenv lock
+    ```
+
+    Make sure `Pipfile.lock` is not listed in `.gitignore` or `.slugignore`, then commit it:
+
+    ```bash
+    git add Pipfile Pipfile.lock
+    git commit -m "Add Pipenv lockfile"
+    ```
+
+    <Note>
+      Pipenv can also supply the Python version to the buildpack via the `[requires]` section in your `Pipfile`. See [Python version](/configuration/python-version) for details.
+    </Note>
+  </Tab>
+  <Tab title="Poetry">
+    Poetry is detected by the presence of a `poetry.lock` file. Generate it locally and commit it along with your `pyproject.toml`:
+
+    ```bash
+    poetry lock
+    git add pyproject.toml poetry.lock
+    git commit -m "Add Poetry lockfile"
+    ```
+  </Tab>
+  <Tab title="uv">
+    uv is detected by the presence of a `uv.lock` file. Generate it locally and commit it along with your `pyproject.toml`:
+
+    ```bash
+    uv lock
+    git add pyproject.toml uv.lock
+    git commit -m "Add uv lockfile"
+    ```
+
+    <Warning>
+      When using uv, a `.python-version` file is **required**. The buildpack will not fall back to a default or cached Python version. Run `uv python pin 3.13` (adjust to your desired version) and commit the resulting file.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Common errors
+
+<AccordionGroup>
+  <Accordion title="Error: No supported Python package manager files found">
+    None of the four detection files (`requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock`) were found in the root directory of your app.
+
+    If your app has no dependencies, create an empty `requirements.txt`:
+
+    ```bash
+    touch requirements.txt
+    git add requirements.txt
+    git commit -m "Add empty requirements.txt"
+    ```
+
+    If a package manager file already exists, check that it:
+
+    1. Is in the top-level directory, not a subdirectory.
+    2. Has the correct spelling and casing.
+    3. Is not listed in `.gitignore` or `.slugignore`.
+    4. Has been committed to your Git repository (`git add --all && git commit`).
+  </Accordion>
+  <Accordion title="Error: Multiple Python package manager files found">
+    More than one of the detection files was found. The buildpack no longer guesses which package manager to use — this behaviour was removed in buildpack v325.
+
+    Decide which package manager you want to use and delete the files belonging to the others. For example, if migrating from pip to uv, delete `requirements.txt` after generating a `uv.lock`.
+
+    If you previously used a third-party uv or Poetry buildpack, remove it from your app. The requirements file it generated may be triggering this error. See the Heroku documentation on [removing buildpacks](https://devcenter.heroku.com/articles/managing-buildpacks#remove-classic-buildpacks).
+  </Accordion>
+  <Accordion title="Error: No Pipfile.lock found">
+    A `Pipfile` was found but no `Pipfile.lock`. Running Pipenv without a lockfile is not supported.
+
+    Run `pipenv lock` locally, commit the generated `Pipfile.lock`, and ensure it is not excluded by `.gitignore` or `.slugignore`.
+  </Accordion>
+  <Accordion title="Error: Implicit setup.py file support has been sunset">
+    Your app has a `setup.py` file but no package manager file. Support for implicit `setup.py`-only apps was removed in buildpack v325.
+
+    To continue using `setup.py` with pip in editable mode, create a `requirements.txt` file containing:
+
+    ```text requirements.txt
+    --editable .
+    ```
+
+    Alternatively, migrate to uv or another supported package manager.
+  </Accordion>
+</AccordionGroup>

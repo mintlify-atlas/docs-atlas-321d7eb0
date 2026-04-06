@@ -1,0 +1,128 @@
+---
+title: "pip"
+description: "Use pip with a requirements.txt file to install Python dependencies on Heroku."
+---
+
+pip is the standard Python package manager and the most straightforward option for deploying Python apps on Heroku. The buildpack detects pip when it finds a `requirements.txt` file in your repository root.
+
+## Detection
+
+The buildpack uses pip when a `requirements.txt` file exists in the root directory of your app. No other configuration is required.
+
+<Warning>
+Only one package manager file should be present. If the buildpack finds multiple (e.g., both `requirements.txt` and `uv.lock`), the build will fail with an error.
+</Warning>
+
+## Setup
+
+<Steps>
+  <Step title="Generate requirements.txt">
+    If you already have a working local environment, freeze your installed packages:
+
+    ```bash
+    pip freeze > requirements.txt
+    ```
+
+    For a new project with no dependencies, create an empty file:
+
+    ```bash
+    touch requirements.txt
+    ```
+  </Step>
+  <Step title="Commit the file">
+    ```bash
+    git add requirements.txt
+    git commit -m "Add requirements.txt"
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    git push heroku main
+    ```
+  </Step>
+</Steps>
+
+## What the buildpack installs
+
+During each build, the buildpack:
+
+1. Installs the buildpack-managed version of pip (and setuptools on Python 3.12 and older).
+2. Runs `pip install -r requirements.txt` to install your app's dependencies.
+
+You do not need to specify a pip version — the buildpack manages it automatically and keeps it up to date.
+
+<Note>
+setuptools is only installed alongside pip for Python 3.10, 3.11, and 3.12. For Python 3.13 and newer, pip uses isolated build environments that include setuptools on demand, and most of the ecosystem no longer requires it to be pre-installed.
+</Note>
+
+## Common patterns
+
+### Pinned versions
+
+Pin exact versions to keep builds reproducible:
+
+```text
+flask==3.1.0
+gunicorn==23.0.0
+sqlalchemy==2.0.40
+```
+
+### Extras
+
+Install optional dependency groups declared by a package:
+
+```text
+psycopg[binary]==3.2.6
+```
+
+### Constraints files
+
+Use a constraints file to restrict transitive dependency versions without specifying them as direct requirements:
+
+```bash
+pip install -r requirements.txt -c constraints.txt
+```
+
+To use a constraints file, reference it from within `requirements.txt`:
+
+```text
+-c constraints.txt
+flask==3.1.0
+gunicorn==23.0.0
+```
+
+### Editable installs
+
+Editable installs (`-e .` or `--editable .`) are supported. The buildpack installs editable packages into `/app/.heroku/python/src`.
+
+<Warning>
+The build directory is relocated from a temporary path to `/app` at runtime. The buildpack rewrites paths in editable install `.pth` files automatically, but if your app hardcodes the build-time path, it will break at runtime.
+</Warning>
+
+## Heroku CI
+
+When running tests on Heroku CI, the buildpack also installs a `requirements-test.txt` file if one exists alongside `requirements.txt`. Both files are passed to pip in a single invocation so that version conflicts between them are resolved together:
+
+```bash
+pip install -r requirements.txt -r requirements-test.txt
+```
+
+## Private packages
+
+To install packages from a private index, set the `PIP_EXTRA_INDEX_URL` config var on your Heroku app:
+
+```bash
+heroku config:set PIP_EXTRA_INDEX_URL=https://your-private-index.example.com/simple/
+```
+
+## Cache behavior
+
+The buildpack caches installed packages between builds. The cache is invalidated when the Python version changes or when the buildpack determines a full reinstall is needed.
+
+<Note>
+Unlike lockfile-based package managers, pip with `requirements.txt` does not perform exact environment management. Packages already present in the cache that satisfy the requirements may be kept even if newer versions are available. Pin your versions explicitly for fully reproducible builds.
+</Note>
+
+## Wheel
+
+Prior to buildpack v328 (January 2026), the buildpack installed `wheel` alongside pip for Python 3.12 and older. It is no longer installed for any Python version, since pip now handles build isolation and wheel building automatically.

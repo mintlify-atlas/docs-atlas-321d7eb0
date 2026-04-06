@@ -1,0 +1,115 @@
+---
+title: "Changelog"
+description: "Recent notable changes to the Heroku Python buildpack, including new features, deprecations, and dependency version bumps."
+---
+
+This page highlights the most recent releases of the Heroku Python buildpack. For the complete history, see the [full CHANGELOG on GitHub](https://github.com/heroku/heroku-buildpack-python/blob/main/CHANGELOG.md).
+
+## Recent releases
+
+### v340 — 2026-04-02
+
+- Updated Pipenv from 2026.0.3 to **2026.5.1**.
+- Updated Poetry from 2.3.2 to **2.3.3**.
+- Updated uv from 0.10.9 to **0.11.3**.
+
+### v339 — 2026-03-13
+
+- Updated uv from 0.10.7 to **0.10.9**.
+- Switched uv downloads to `releases.astral.sh` instead of GitHub releases.
+- Expanded the list of detected misspellings for `.python-version` files.
+
+### v338 — 2026-03-03
+
+- Python **3.12** alias now resolves to 3.12.13.
+- Python **3.11** alias now resolves to 3.11.15.
+- Python **3.10** alias now resolves to 3.10.20.
+
+### v337 — 2026-03-03
+
+- Updated pip from 25.3 to **26.0.1**.
+- Updated uv from 0.10.1 to **0.10.7**.
+- Configured uv to use hard links explicitly to preserve previous behaviour.
+
+### v336 — 2026-03-02
+
+- Added a workaround for `nltk.txt` downloader errors caused by an upstream NLTK v3.9.3 regression.
+- Changed the Python S3 download URL to use AWS' dual-stack (IPv6-compatible) endpoint.
+
+### v333 — 2026-02-04
+
+- Python **3.14** alias now resolves to 3.14.3.
+- Python **3.13** alias now resolves to 3.13.12.
+
+### v329 — 2026-01-08
+
+- Updated Pipenv from 2025.0.4 to **2026.0.3**.
+
+### v328 — 2026-01-07
+
+- Updated pip from 25.2 to **25.3**.
+- Stopped installing `wheel` when using pip with Python 3.12 and older.
+
+### v327 — 2026-01-07
+
+<Warning>
+**Breaking:** Python 3.9 is no longer supported. Apps still using Python 3.9 will need to upgrade before deploying.
+</Warning>
+
+- Removed support for **Python 3.9**.
+
+### v325 — 2025-12-10
+
+<Warning>
+**Breaking:** Two previously-deprecated behaviours are now hard errors.
+</Warning>
+
+- Multiple package manager files found in the same repo is now a **build error** (previously a warning since November 2024).
+- Falling back to `setup.py`-only installs has been **sunset** (previously deprecated since September 2025). Apps must now include an explicit package manager file.
+- Updated uv from 0.9.14 to **0.9.17**.
+
+### v324 — 2025-12-09
+
+- An existing `.venv/` or `venv/` virtual environment directory in the repo is now a **build error** (previously a warning since September 2025).
+- Stopped adding the current working directory to `PATH`.
+
+### v323 — 2025-12-05
+
+- The **default Python version** for new apps changed from **3.13** to **3.14**.
+- Python 3.14 alias now resolves to 3.14.2.
+- Python 3.13 alias now resolves to 3.13.11.
+
+### v321 — 2025-11-21
+
+- Deprecated support for **Python 3.10** (end-of-life October 2026; buildpack support removed 6th January 2027).
+- Added build log messaging recommending uv as the preferred package manager.
+
+### v320 — 2025-11-20
+
+- Added detection and a clear error message for common `.python-version` filename misspellings.
+
+### v313 — 2025-10-09
+
+- Added support for **Python 3.14**.
+
+---
+
+## Key milestones
+
+| Version | Date | Change |
+|---|---|---|
+| v340 | 2026-04-02 | uv 0.11.3, Pipenv 2026.5.1, Poetry 2.3.3 |
+| v327 | 2026-01-07 | Python 3.9 removed |
+| v325 | 2025-12-10 | Multiple package managers → error; setup.py fallback sunset |
+| v324 | 2025-12-09 | Committed `.venv/` → error |
+| v323 | 2025-12-05 | Default Python version changed to 3.14 |
+| v321 | 2025-11-21 | Python 3.10 deprecated |
+| v313 | 2025-10-09 | Python 3.14 support added |
+
+---
+
+<Note>
+**uv is now the recommended package manager.** The buildpack recommends uv after every build that uses pip, Pipenv, or Poetry. uv supports lockfiles, installs dependencies significantly faster, and provides clearer error messages.
+</Note>
+
+For the complete list of all changes since the buildpack was created, see the [CHANGELOG on GitHub](https://github.com/heroku/heroku-buildpack-python/blob/main/CHANGELOG.md).

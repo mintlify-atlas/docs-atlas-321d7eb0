@@ -1,0 +1,145 @@
+---
+title: "Poetry"
+description: "Use Poetry with a poetry.lock file to manage Python dependencies on Heroku."
+---
+
+Poetry is a dependency management and packaging tool for Python with a strong emphasis on reproducible builds via lockfiles. The buildpack detects Poetry when it finds a `poetry.lock` file in your repository root.
+
+## Detection
+
+The buildpack uses Poetry when `poetry.lock` exists in the root directory of your app.
+
+<Warning>
+Only one package manager file should be present. If the buildpack finds multiple (e.g., both `poetry.lock` and `requirements.txt`), the build will fail with an error.
+</Warning>
+
+## Poetry version
+
+The buildpack installs and manages Poetry automatically. The current version is **2.3.3**.
+
+You do not need to pin the Poetry version yourself — the buildpack keeps it up to date.
+
+## Setup
+
+<Steps>
+  <Step title="Install Poetry locally">
+    Follow the [official installation guide](https://python-poetry.org/docs/#installation).
+  </Step>
+  <Step title="Initialise your project">
+    ```bash
+    poetry init
+    ```
+
+    Or create a new project:
+
+    ```bash
+    poetry new my-app
+    ```
+  </Step>
+  <Step title="Add your dependencies">
+    ```bash
+    poetry add flask gunicorn
+    ```
+
+    This updates both `pyproject.toml` and `poetry.lock`.
+  </Step>
+  <Step title="Commit both files">
+    ```bash
+    git add pyproject.toml poetry.lock
+    git commit -m "Add Poetry dependency files"
+    ```
+  </Step>
+  <Step title="Deploy">
+    ```bash
+    git push heroku main
+    ```
+  </Step>
+</Steps>
+
+## Python version
+
+Poetry does not control the Python version used on Heroku. Specify the Python version separately using a `.python-version` file in your repository root:
+
+```text
+3.13
+```
+
+To create this file using pyenv:
+
+```bash
+pyenv local 3.13
+```
+
+Or write it directly:
+
+```bash
+echo "3.13" > .python-version
+git add .python-version
+git commit -m "Pin Python version"
+```
+
+<Tip>
+You can also pin an exact patch version (e.g., `3.13.2`) for fully reproducible builds. A minor version like `3.13` resolves to the latest `3.13.x` available on Heroku at build time.
+</Tip>
+
+## Dev dependencies
+
+Dev dependencies are **not** installed on production deployments. The buildpack runs:
+
+```bash
+poetry sync --only main --compile --no-ansi --no-interaction
+```
+
+`--only main` installs only the packages in Poetry's `main` dependency group (groups marked `optional = true` are excluded). `--compile` generates `.pyc` bytecode files during the build to improve app startup times.
+
+All default dependency groups are installed when running tests on Heroku CI.
+
+## Where Poetry is installed
+
+Poetry is installed into the build cache (not the app slug) since it is only needed during the build. The buildpack creates a dedicated virtual environment for Poetry and symlinks the `poetry` binary into a `bin/` directory. Poetry is **not** available at runtime.
+
+If you reference `poetry` in your Procfile, remove it. Use direct commands instead:
+
+```text
+# Procfile
+web: gunicorn myapp:app
+```
+
+## What the buildpack installs
+
+During each build, the buildpack:
+
+1. Installs Poetry 2.3.3 into the build cache (or reuses a cached install if the version is unchanged).
+2. Runs `poetry sync --only main --compile --no-ansi --no-interaction` to install production dependencies from the lockfile.
+
+Site-packages are cached between builds. Poetry reports which packages were added or removed since the last successful build, making it easy to see what changed.
+
+## Common workflow
+
+```bash
+# Add a new package
+poetry add requests
+
+# Update the lockfile after changing pyproject.toml manually
+poetry lock
+
+# Remove a package
+poetry remove requests
+
+# Commit changes
+git add pyproject.toml poetry.lock
+git commit -m "Update dependencies"
+git push heroku main
+```
+
+## Common errors
+
+### Missing lockfile
+
+The buildpack requires `poetry.lock` to be committed. If it is missing, the buildpack will not detect Poetry and may fail with a "no supported package manager files found" error.
+
+**Fix:** Run `poetry lock` locally and commit `poetry.lock`. Make sure it is not listed in `.gitignore`.
+
+### Multiple package manager files
+
+If you previously used a third-party Poetry buildpack, it may have generated a `requirements.txt` file. Remove that buildpack and delete the generated `requirements.txt` before deploying.

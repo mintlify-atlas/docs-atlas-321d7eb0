@@ -1,80 +1,212 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Deploy your first Python application to Heroku"
 ---
 
-## Get started in three steps
+This guide walks you through deploying a Python web application to Heroku using the Python buildpack.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you start, make sure you have the following installed:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli) — authenticated with `heroku login`
+- [Git](https://git-scm.com/)
+- [Python 3.11+](https://www.python.org/downloads/)
+- [pip](https://pip.pypa.io/en/stable/installation/)
 
-### Step 2: Deploy your changes
+<Steps>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Step title="Create your app">
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+Create a new directory for your project and add a simple Flask application.
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash
+mkdir my-python-app
+cd my-python-app
+```
 
-### Step 3: Go live
+Create `app.py`:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```python app.py
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "Hello from Heroku!"
+
+if __name__ == "__main__":
+    app.run()
+```
+
+<Note>
+Your web process must bind to the port provided by Heroku via the `$PORT` environment variable. Gunicorn handles this automatically when you use it as the web server.
+</Note>
+
+</Step>
+
+<Step title="Add a requirements.txt">
+
+The buildpack requires a package manager file in the root of your repository. For pip, create `requirements.txt`:
+
+```text requirements.txt
+flask
+gunicorn
+```
+
+The buildpack detects your package manager from the presence of one of these files:
+
+| File | Package manager |
+|------|----------------|
+| `requirements.txt` | pip |
+| `Pipfile.lock` | Pipenv |
+| `poetry.lock` | Poetry |
+| `uv.lock` | uv |
+
+<Tip>
+If your app has no third-party dependencies, create an empty `requirements.txt` file. The buildpack requires at least one package manager file to be present.
+</Tip>
+
+</Step>
+
+<Step title="Create a Procfile">
+
+A `Procfile` tells Heroku how to run your application. Create one in the root of your project:
+
+```text Procfile
+web: gunicorn app:app
+```
+
+The format is `web: gunicorn <module>:<callable>`, where `app:app` refers to the `app` variable in `app.py`.
+
+</Step>
+
+<Step title="Set a Python version">
+
+Create a `.python-version` file to pin your app to a specific Python major version:
+
+```text .python-version
+3.13
+```
+
+The supported Python versions are:
+
+| Version | Status |
+|---------|--------|
+| `3.14` | Supported (default) |
+| `3.13` | Supported |
+| `3.12` | Supported |
+| `3.11` | Supported |
+
+<Tip>
+Use the major version form (e.g., `3.13`) rather than a full version like `3.13.1`. This lets your app automatically receive Python patch-level security updates.
+</Tip>
+
+If you omit this file, the buildpack uses the default Python version (currently 3.14) on your first deploy, and then pins subsequent builds to that same version.
+
+</Step>
+
+<Step title="Initialize a Git repository and create a Heroku app">
+
+Initialize a Git repository, commit your files, and create a new Heroku app:
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+heroku create
+```
+
+`heroku create` provisions a new app and adds a `heroku` Git remote to your local repository.
+
+</Step>
+
+<Step title="Deploy to Heroku">
+
+Push your code to Heroku to trigger a build:
+
+```bash
+git push heroku main
+```
+
+You will see build output similar to the following:
+
+```
+remote: Compressing source files... done.
+remote: Building source:
+remote:
+remote: -----> Python app detected
+remote: -----> Using Python 3.13 specified in .python-version
+remote: -----> Installing Python 3.13.x
+remote: -----> Installing dependencies using pip
+remote:        Collecting flask
+remote:        Collecting gunicorn
+remote:        ...
+remote:        Successfully installed flask-x.x.x gunicorn-x.x.x ...
+remote:
+remote: -----> Discovering process types
+remote:        Procfile declares types -> web
+remote:
+remote: -----> Compressing...
+remote: -----> Launching...
+remote:        Released v3
+remote:        https://your-app-name.herokuapp.com/ deployed to Heroku
+```
+
+What happens during the build:
+
+1. **Detection** — the buildpack identifies your app as Python by finding `requirements.txt`.
+2. **Python installation** — the requested Python version is downloaded and installed.
+3. **Dependency installation** — pip installs the packages from `requirements.txt`.
+4. **Process type discovery** — Heroku reads your `Procfile` to learn how to start the app.
+5. **Slug compilation** — the build is compressed and deployed.
+
+</Step>
+
+<Step title="Open your app">
+
+Once the deploy completes, open your app in a browser:
+
+```bash
+heroku open
+```
+
+You can also view logs to confirm the web process started correctly:
+
+```bash
+heroku logs --tail
+```
+
+</Step>
+
+</Steps>
+
+## Project structure
+
+Your finished project should look like this:
+
+```
+my-python-app/
+├── app.py
+├── .python-version
+├── Procfile
+└── requirements.txt
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Python version" icon="python" href="/configuration/python-version">
+    Learn how to configure and update your Python version
+  </Card>
+  <Card title="Package managers" icon="box" href="/configuration/package-managers">
+    Use pip, Pipenv, Poetry, or uv to manage dependencies
+  </Card>
+  <Card title="Build hooks" icon="code" href="/features/build-hooks">
+    Run custom scripts before or after dependency installation
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/operations/troubleshooting">
+    Diagnose and fix common build and runtime errors
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

@@ -1,0 +1,177 @@
+---
+title: "Python version"
+description: "How to specify which Python version the Heroku Python buildpack installs for your app."
+---
+
+The buildpack supports Python 3.11 through 3.14. We recommend pinning to a major version (e.g. `3.13`) so your app automatically receives patch-level security updates on every build.
+
+## Supported versions
+
+| Version    | Latest patch | Status              |
+| ---------- | ------------ | ------------------- |
+| 3.14       | 3.14.3       | Supported (default) |
+| 3.13       | 3.13.12      | Supported           |
+| 3.12       | 3.12.13      | Supported           |
+| 3.11       | 3.11.15      | Supported           |
+| 3.10       | 3.10.20      | Deprecated          |
+| 3.9 and below | —         | Not supported (EOL) |
+
+<Warning>
+  Python 3.10 will reach its upstream end-of-life in October 2026 and will be removed from this buildpack on 6 January 2027. Upgrade to a newer version as soon as possible.
+</Warning>
+
+## Specifying your Python version
+
+<Tabs>
+  <Tab title=".python-version (recommended)">
+    Create a `.python-version` file in the root directory of your app containing only the major version number.
+
+    ```text .python-version
+    3.13
+    ```
+
+    The buildpack resolves this to the latest available patch release of that major version (e.g. `3.13.12`). You can also pin to an exact patch version, but this is not recommended because it prevents automatic security updates:
+
+    ```text .python-version
+    3.13.12
+    ```
+
+    <Note>
+      When using uv as your package manager, a `.python-version` file is **required**. The buildpack will error if it is missing or if you use a `runtime.txt` file instead.
+    </Note>
+
+    **Rules for `.python-version`:**
+
+    - Do not include quotes around the version.
+    - Do not include a `python-` prefix.
+    - Do not use wildcards (e.g. `3.13.*`).
+    - The file must contain exactly one version. Multiple versions cause a build error.
+    - Comments are supported on separate lines prefixed with `#`.
+    - The file must be saved as UTF-8 without a BOM. UTF-16 and UTF-8 with BOM are not supported.
+    - The file must be in the top-level directory of your repository, not a subdirectory.
+    - Make sure the file is tracked by Git and not listed in `.gitignore` or `.slugignore`.
+  </Tab>
+  <Tab title="runtime.txt (deprecated)">
+    <Warning>
+      `runtime.txt` is deprecated and will be removed in a future version of the buildpack. Migrate to a `.python-version` file. `runtime.txt` is not supported at all when using uv.
+    </Warning>
+
+    If your app has a `runtime.txt` file, the version must use the `python-N.N` or `python-N.N.N` format:
+
+    ```text runtime.txt
+    python-3.13
+    ```
+
+    To migrate, delete `runtime.txt` and create a `.python-version` file containing just the version number (without the `python-` prefix).
+  </Tab>
+  <Tab title="Pipfile.lock (Pipenv)">
+    When using Pipenv, the buildpack reads the Python version from the `._meta.requires` object in your `Pipfile.lock`. Two optional fields are checked, in order of precedence:
+
+    1. `python_full_version` — an exact patch version (e.g. `3.13.12`)
+    2. `python_version` — a major version (e.g. `3.13`)
+
+    These fields are set automatically when you run `pipenv lock` after configuring the `[requires]` section in your `Pipfile`:
+
+    ```toml Pipfile
+    [requires]
+    python_version = "3.13"
+    ```
+
+    <Note>
+      Even when using Pipenv, adding a `.python-version` file is a good practice and takes precedence over the Pipfile.lock fields.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Precedence order
+
+If your app specifies a Python version in multiple places, the buildpack uses the following order (highest to lowest priority):
+
+1. `runtime.txt` (deprecated)
+2. `.python-version`
+3. `python_full_version` field in `Pipfile.lock`
+4. `python_version` field in `Pipfile.lock`
+5. Cached version from the last build (sticky versioning)
+6. Buildpack default (currently Python 3.14)
+
+<Note>
+  Relying on the cached or default version is not recommended. The default can change over time and may not match your local development environment. Always set an explicit version.
+</Note>
+
+## Common errors
+
+<AccordionGroup>
+  <Accordion title="Error: Invalid Python version in .python-version">
+    The version string in your `.python-version` file is not in a recognised format. Valid formats are:
+
+    - Major version only: `3.13`
+    - Exact patch version: `3.13.12`
+
+    Common mistakes that cause this error:
+
+    - Including quotes: `"3.13"`
+    - Including a `python-` prefix: `python-3.13`
+    - Using a wildcard: `3.13.*`
+    - Extra whitespace or invisible Unicode characters in the version string
+
+    Update the file so it contains only the bare version number.
+  </Accordion>
+  <Accordion title="Error: No Python version found in .python-version">
+    The file exists but contains no valid version. This can happen if:
+
+    - The file is empty.
+    - The only line starts with `#` (comment lines are ignored).
+
+    Add a version on a non-commented line.
+  </Accordion>
+  <Accordion title="Error: Multiple Python versions found in .python-version">
+    The file contains more than one version on separate non-commented lines. Remove all but one.
+  </Accordion>
+  <Accordion title="Error: Unable to read .python-version (encoding issue)">
+    The file is not saved as plain UTF-8. Encodings that cause this error include UTF-8 with BOM and UTF-16.
+
+    Configure your editor to save the file as UTF-8 without a BOM, then delete and recreate it. On Windows, avoid piping output to the file from a terminal, since some terminal configurations produce UTF-16 LE output.
+
+    Also check that no `.gitattributes` rule is overriding the encoding.
+  </Accordion>
+  <Accordion title="Error: Your .python-version file is spelled incorrectly">
+    The buildpack detected a file with a name similar to `.python-version` but with a typo. Common misspellings that trigger this error include:
+
+    ```
+    .python_version
+    .python_version.txt
+    .python-version.txt
+    .python-version.TXT
+    .python-version.py
+    .python-version.rtf
+    .Python-version
+    .pythonversion
+    .python.version
+    python-version
+    python_version
+    python-version.txt
+    python_version.txt
+    ```
+
+    Rename the file to exactly `.python-version` (lowercase, with a leading dot, no extension).
+  </Accordion>
+  <Accordion title="Error: The requested Python version has reached end-of-life">
+    The version you requested (or that was cached from a previous build) is no longer supported because it has reached its upstream end-of-life. Upgrade to a supported version by updating your `.python-version` file.
+  </Accordion>
+  <Accordion title="Error: No Python version was specified (uv only)">
+    When using uv, the buildpack requires a `.python-version` file. A default or cached version is not used. Run `uv python pin 3.13` (adjust to your desired version) in the root of your app, then commit the resulting `.python-version` file.
+  </Accordion>
+</AccordionGroup>
+
+## Patch version warnings
+
+If you pin to an exact patch version (e.g. `3.13.1`) and a newer patch release is available (e.g. `3.13.12`), the buildpack emits a warning:
+
+```
+Warning: A Python patch update is available!
+
+Your app is using Python 3.13.1, however, there is a newer
+patch release of Python 3.13 available: 3.13.12
+```
+
+To resolve this, either update the pinned version in your file or, preferably, switch to specifying only the major version (`3.13`) so updates are applied automatically.

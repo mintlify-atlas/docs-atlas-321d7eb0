@@ -1,0 +1,150 @@
+---
+title: "Django"
+description: "How the Python buildpack handles Django-specific features, including automatic static file collection and recommended configuration."
+---
+
+The Python buildpack detects Django automatically and runs several Django-specific steps during the build. No additional configuration is required to enable these features.
+
+## Automatic collectstatic
+
+If Django is installed and a `manage.py` file is found in your repository, the buildpack runs:
+
+```bash
+python manage.py collectstatic --noinput
+```
+
+This command runs after your dependencies are installed. If it fails, **the build fails**.
+
+The buildpack searches for `manage.py` up to three directory levels deep and uses the shallowest match.
+
+<Note>
+`collectstatic` only runs when Django is importable in the build environment. If Django is not listed in your `requirements.txt` (or equivalent), this step is skipped silently.
+</Note>
+
+### Disabling collectstatic
+
+Set the `DISABLE_COLLECTSTATIC` config var to skip the step entirely:
+
+```bash
+heroku config:set DISABLE_COLLECTSTATIC=1
+```
+
+<Warning>
+An older method — placing a `.heroku/collectstatic_disabled` file in your repo — is deprecated. Remove the file and use the `DISABLE_COLLECTSTATIC` env var instead.
+</Warning>
+
+### Debugging collectstatic failures
+
+Set `DEBUG_COLLECTSTATIC=1` to print all environment variables when collectstatic fails. This is useful for diagnosing missing settings or misconfigured paths:
+
+```bash
+heroku config:set DEBUG_COLLECTSTATIC=1
+```
+
+After reproducing the failure, unset the var to avoid leaking config values in build logs:
+
+```bash
+heroku config:unset DEBUG_COLLECTSTATIC
+```
+
+## Common errors
+
+<AccordionGroup>
+  <Accordion title="SyntaxError">
+    A Python syntax error exists somewhere in your application code (or a dependency). The traceback in the build log will point to the exact file and line number.
+
+    Fix the syntax error in your code and redeploy.
+  </Accordion>
+
+  <Accordion title="ImproperlyConfigured">
+    Django's settings module is missing a required value or is not being loaded correctly. Common causes:
+
+    - `DJANGO_SETTINGS_MODULE` is not set or points to the wrong module
+    - A required setting like `SECRET_KEY` or `ALLOWED_HOSTS` is missing
+    - A settings import fails because an env var it depends on is not available during the build
+
+    Check that `DJANGO_SETTINGS_MODULE` matches the Python module path of your settings file.
+  </Accordion>
+
+  <Accordion title="OSError">
+    A static file referenced in your code or templates does not exist. The traceback will include the path of the missing file.
+
+    Verify that all referenced static files are committed to your repository and that your `STATICFILES_DIRS` and `STATIC_ROOT` settings are correct.
+  </Accordion>
+</AccordionGroup>
+
+## Required configuration
+
+### DJANGO_SETTINGS_MODULE
+
+If your settings file is not at the Django default location, you must tell Django where to find it:
+
+```bash
+heroku config:set DJANGO_SETTINGS_MODULE=myproject.settings.production
+```
+
+This env var must be set before the build runs — not just at runtime — because collectstatic imports your settings module during the build.
+
+### DATABASE_URL
+
+Heroku provides a `DATABASE_URL` config var automatically when you attach a Heroku Postgres add-on. Use [`dj-database-url`](https://pypi.org/project/dj-database-url/) to parse it in your settings:
+
+```python
+import dj_database_url
+
+DATABASES = {
+    "default": dj_database_url.config(conn_max_age=600)
+}
+```
+
+## Automatic PostgreSQL addon
+
+If your app uses both Django and `psycopg2`, the buildpack's `bin/release` script automatically requests a Heroku Postgres addon for your app. This is a convenience for apps that are clearly database-backed: Heroku attaches a `DATABASE_URL` config var so your app has a database available from the first deploy.
+
+<Note>
+This only triggers when both `django` and `psycopg2` are importable in the build environment. If you already have a Heroku Postgres addon attached, no duplicate is added.
+</Note>
+
+## Static files in production
+
+<Tip>
+Use [WhiteNoise](https://whitenoise.readthedocs.io/) to serve static files directly from your Django app without a separate CDN or object storage bucket. It is the recommended approach for most Heroku apps.
+</Tip>
+
+<Steps>
+  <Step title="Install WhiteNoise">
+    Add `whitenoise` to your `requirements.txt`:
+
+    ```
+    whitenoise
+    ```
+  </Step>
+
+  <Step title="Add WhiteNoise middleware">
+    Place `WhiteNoiseMiddleware` directly after `SecurityMiddleware` in your settings:
+
+    ```python
+    MIDDLEWARE = [
+        "django.middleware.security.SecurityMiddleware",
+        "whitenoise.middleware.WhiteNoiseMiddleware",
+        # ...
+    ]
+    ```
+  </Step>
+
+  <Step title="Configure STATIC_ROOT">
+    Set `STATIC_ROOT` so collectstatic knows where to write files:
+
+    ```python
+    STATIC_ROOT = BASE_DIR / "staticfiles"
+    ```
+  </Step>
+
+  <Step title="Enable compression (optional)">
+    Enable WhiteNoise's built-in compression and long-term caching:
+
+    ```python
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    ```
+  </Step>
+</Steps>

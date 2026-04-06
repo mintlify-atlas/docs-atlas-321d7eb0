@@ -1,0 +1,110 @@
+---
+title: "Automatic WEB_CONCURRENCY"
+description: "How the Python buildpack sets WEB_CONCURRENCY and Gunicorn defaults at dyno startup based on available memory and CPU cores."
+---
+
+The Python buildpack installs a `profile.d` script that runs at dyno startup and automatically configures the `WEB_CONCURRENCY` environment variable. This controls the default number of worker processes that Gunicorn, Uvicorn, and other compatible servers launch.
+
+## How WEB_CONCURRENCY is calculated
+
+At dyno boot, the script reads available memory from the cgroup memory limits file (`/sys/fs/cgroup/memory/memory.limit_in_bytes`) and the number of CPU cores from `nproc`, then sets `WEB_CONCURRENCY` to the **lower** of:
+
+- `<available RAM in MB> / 256` — ensures each worker has at least 256 MB
+- `<CPU cores> * 2 + 1` — standard multi-process formula
+
+```
+WEB_CONCURRENCY = min(RAM_MB / 256, CPU_cores * 2 + 1)
+```
+
+### Default values by dyno type
+
+| Dyno type                                        | WEB_CONCURRENCY | Limiting factor |
+| ------------------------------------------------ | --------------- | --------------- |
+| Eco / Basic / Standard-1X (512 MB)               | 2               | Memory          |
+| Standard-2X / Private-S / Shield-S (1 GB)        | 4               | Memory          |
+| Performance-M / Private-M / Shield-M (2 cores)   | 5               | CPU cores       |
+| Performance-L / Private-L / Shield-L (8 cores)   | 17              | CPU cores       |
+| Performance-L-RAM / Private-L-RAM / Shield-L-RAM | 9               | CPU cores       |
+| Performance-XL / Private-XL / Shield-XL          | 17              | CPU cores       |
+| Performance-2XL / Private-2XL / Shield-2XL       | 33              | CPU cores       |
+
+<Note>
+The script only logs output for `web.*` dynos. Worker and one-off dynos still have `WEB_CONCURRENCY` set for consistency, but no message appears in their logs.
+</Note>
+
+## Overriding WEB_CONCURRENCY
+
+If `WEB_CONCURRENCY` is already set when the script runs (e.g. you set it as a config var), the buildpack skips automatic configuration entirely:
+
+```bash
+# Set a fixed value — the buildpack will not override it
+heroku config:set WEB_CONCURRENCY=4
+```
+
+You can also pass `--workers` directly in your Procfile, which takes precedence over the env var for that specific process:
+
+```
+web: gunicorn myapp.wsgi --workers 2
+```
+
+## WEB_CONCURRENCY_SET_BY
+
+When the buildpack sets `WEB_CONCURRENCY` automatically, it also exports:
+
+```
+WEB_CONCURRENCY_SET_BY=heroku/python
+```
+
+This lets your application (or monitoring tooling) distinguish between a user-supplied value and the buildpack default.
+
+## Gunicorn defaults
+
+A second `profile.d` script sets Gunicorn-specific defaults at dyno startup:
+
+```bash
+# Allow requests forwarded from the Heroku router
+export FORWARDED_ALLOW_IPS='*'
+
+# Enable stdout access logging (if not already configured)
+export GUNICORN_CMD_ARGS="${GUNICORN_CMD_ARGS:---access-logfile -}"
+```
+
+`FORWARDED_ALLOW_IPS='*'` is required for Gunicorn to correctly identify HTTPS requests that arrive through the Heroku router. Without it, `request.is_secure()` in Django (and equivalent checks in other frameworks) returns `False` for all requests.
+
+`GUNICORN_CMD_ARGS` enables access logging to stdout by default so Heroku's log drain captures request logs. You can extend this variable in your own config without losing the default:
+
+```bash
+heroku config:set GUNICORN_CMD_ARGS="--access-logfile - --timeout 120"
+```
+
+## Example Procfile
+
+```
+web: gunicorn myapp.wsgi
+```
+
+With this minimal Procfile, Gunicorn picks up `WEB_CONCURRENCY` (set automatically) and `GUNICORN_CMD_ARGS` (set by the buildpack) at startup.
+
+<Tip>
+For Django apps, use `myapp.wsgi:application` if you need to reference the WSGI callable explicitly, or let Gunicorn discover it automatically with `myapp.wsgi`.
+</Tip>
+
+## DYNO_RAM
+
+As a side effect, the script also exports:
+
+```
+DYNO_RAM=<available_memory_in_mb>
+```
+
+This variable is undocumented and not guaranteed to remain stable, but is available if your application needs to know its memory limit at runtime.
+
+## Non-Heroku environments
+
+If the cgroup memory limits file does not exist (e.g. when running locally or on Dokku), the script skips automatic configuration and prints:
+
+```
+Python buildpack: Couldn't determine available memory. Skipping automatic configuration of WEB_CONCURRENCY.
+```
+
+In this case, `WEB_CONCURRENCY` is left unset unless you define it yourself.

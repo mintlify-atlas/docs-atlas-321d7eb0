@@ -1,0 +1,328 @@
+---
+title: "Troubleshooting"
+description: "Solutions for common build errors and warnings from the Heroku Python buildpack, including package manager, Python version, Django, and environment errors."
+---
+
+This guide covers the error messages you may encounter during a Heroku Python build, organized by category. Each section includes the exact error text from the buildpack and the steps to resolve it.
+
+## Enabling debug mode
+
+Set the `BUILDPACK_XTRACE` config var to `1` before pushing to print every shell command the buildpack executes. This is useful for diagnosing failures that don't produce a clear error message.
+
+```bash
+heroku config:set BUILDPACK_XTRACE=1 -a <app-name>
+```
+
+Remove it once you are done debugging:
+
+```bash
+heroku config:unset BUILDPACK_XTRACE -a <app-name>
+```
+
+## Checking the buildpack version
+
+The buildpack version is visible at the top of the build log. To pin or update the version, see the [managing buildpacks](https://devcenter.heroku.com/articles/managing-buildpacks) documentation.
+
+## Clearing the build cache
+
+Some errors are caused by a stale cache. To discard it:
+
+```bash
+heroku builds:cache:purge -a <app-name>
+git commit --allow-empty -m "Force clean build"
+git push heroku main
+```
+
+---
+
+## Package manager errors
+
+<AccordionGroup>
+  <Accordion title="Error: No 'Pipfile.lock' found!">
+    A `Pipfile` was found but the associated `Pipfile.lock` lockfile is missing. The buildpack requires a lockfile to ensure dependency versions are pinned.
+
+    **Fix:** Generate the lockfile locally and commit it:
+
+    ```bash
+    pipenv lock
+    git add Pipfile.lock
+    git commit -m "Add Pipfile.lock"
+    git push heroku main
+    ```
+
+    Also confirm that `Pipfile.lock` is not listed in `.gitignore` or `.slugignore`.
+
+    <Note>
+    If you want to switch away from Pipenv, delete your `Pipfile` and add a `requirements.txt`, `poetry.lock`, or `uv.lock` file instead.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Error: Couldn't find any supported Python package manager files.">
+    The buildpack could not find any of the supported package manager files (`requirements.txt`, `Pipfile.lock`, `poetry.lock`, or `uv.lock`) in the root of your repository.
+
+    **Fix:** Add at least one of the supported package manager files to the root directory of your app. If your app has no dependencies, create an empty `requirements.txt`:
+
+    ```bash
+    touch requirements.txt
+    git add requirements.txt
+    git commit -m "Add empty requirements.txt"
+    git push heroku main
+    ```
+
+    If your package manager file already exists, verify that it:
+
+    1. Is in the **top-level** directory, not a subdirectory.
+    2. Has the correct spelling (filenames are case-sensitive).
+    3. Is not listed in `.gitignore` or `.slugignore`.
+    4. Has been staged and committed with `git add --all && git commit`.
+
+    <Tip>
+    If you are starting a new project, consider using uv. It supports lockfiles, is extremely fast, and is actively maintained.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Error: Multiple Python package manager files were found.">
+    More than one of `requirements.txt`, `Pipfile.lock`, `poetry.lock`, and `uv.lock` were found in your repository. Since buildpack v325, this is a hard error.
+
+    **Fix:** Choose one package manager and remove the files belonging to the others.
+
+    ```bash
+    # Example: keeping uv, removing pip
+    git rm requirements.txt
+    git commit -m "Remove requirements.txt, use uv.lock"
+    git push heroku main
+    ```
+
+    <Warning>
+    If you previously used a third-party uv or Poetry buildpack, remove it from your app. Those buildpacks generate a `requirements.txt` at build time, which will trigger this error when combined with your `uv.lock` or `poetry.lock`.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Error: Implicit setup.py file support has been sunset.">
+    Your app only has a `setup.py` file and no package manager lockfile. This fallback was deprecated in September 2025 and removed in v325.
+
+    **Fix:** Add an explicit package manager file. To continue using `setup.py` with pip in editable mode, create a `requirements.txt` containing:
+
+    ```text
+    --editable .
+    ```
+
+    Alternatively, migrate to uv or another supported package manager.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Python version errors
+
+<AccordionGroup>
+  <Accordion title="Error: Invalid Python version in runtime.txt.">
+    The `runtime.txt` file exists but does not contain a version in the expected `python-N.N` or `python-N.N.N` format.
+
+    **Fix:** The `runtime.txt` file is deprecated. Switch to a `.python-version` file instead:
+
+    <Steps>
+      <Step title="Delete runtime.txt">
+        ```bash
+        git rm runtime.txt
+        ```
+      </Step>
+      <Step title="Create .python-version">
+        ```bash
+        echo "3.13" > .python-version
+        ```
+      </Step>
+      <Step title="Commit the change">
+        ```bash
+        git add .python-version
+        git commit -m "Switch from runtime.txt to .python-version"
+        git push heroku main
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Error: Invalid Python version in .python-version.">
+    The `.python-version` file contains a value that is not a valid Python version.
+
+    **Fix:** The file must contain only a major version (`3.13`) or an exact patch version (`3.13.2`). Do not include quotes, a `python-` prefix, or wildcards.
+
+    ```text
+    3.13
+    ```
+
+    Comments are supported on separate lines beginning with `#`.
+  </Accordion>
+
+  <Accordion title="Error: No Python version found in .python-version.">
+    The `.python-version` file exists but is empty or contains only comments.
+
+    **Fix:** Add a Python version to the file:
+
+    ```bash
+    echo "3.13" > .python-version
+    git add .python-version
+    git commit -m "Specify Python version"
+    git push heroku main
+    ```
+
+    If the file already contains a version, ensure the line does not begin with `#`.
+  </Accordion>
+
+  <Accordion title="Error: Multiple Python versions found in .python-version.">
+    The `.python-version` file contains more than one version line. The buildpack requires exactly one version.
+
+    **Fix:** Edit the file so it contains only a single version:
+
+    ```text
+    3.13
+    ```
+  </Accordion>
+
+  <Accordion title="Error: Unable to read .python-version.">
+    The `.python-version` file uses an unsupported text encoding such as UTF-8 with BOM or UTF-16.
+
+    **Fix:** Save the file as plain UTF-8 without a BOM. Most editors have an encoding option in their save dialog or settings.
+
+    On Windows, avoid creating the file by piping output from the terminal (e.g. `echo 3.13 > .python-version`) as some terminals write UTF-16 LE. Use a text editor instead, or use WSL.
+
+    Also check that a `.gitattributes` file is not overriding the encoding for this file.
+  </Accordion>
+
+  <Accordion title="Error: Your .python-version file is spelled incorrectly.">
+    A file with a name similar to `.python-version` was found, but it is not spelled correctly.
+
+    Common misspellings detected by the buildpack include: `.python_version`, `.python-version.txt`, `python-version`, `.pythonversion`, and others.
+
+    **Fix:** Rename the file to exactly `.python-version` (note the leading dot):
+
+    ```bash
+    git mv <misspelled-name> .python-version
+    git commit -m "Fix .python-version filename"
+    git push heroku main
+    ```
+  </Accordion>
+
+  <Accordion title="Error: The requested Python version has reached end-of-life.">
+    The Python version specified in your `.python-version` (or `Pipfile.lock`) is no longer supported because it has reached its upstream end-of-life and no longer receives security updates.
+
+    **Fix:** Upgrade to a supported Python version. Refer to the [Heroku Python support article](https://devcenter.heroku.com/articles/python-support#supported-python-versions) for the current list of supported versions.
+
+    ```bash
+    echo "3.13" > .python-version
+    git add .python-version
+    git commit -m "Upgrade to Python 3.13"
+    git push heroku main
+    ```
+  </Accordion>
+
+  <Accordion title="Warning: Support for Python 3.10 is deprecated!">
+    Python 3.10 reaches its upstream end-of-life in October 2026. Support in this buildpack will be removed on **6th January 2027**.
+
+    **Recommended action:** Upgrade to a newer Python version as soon as possible. Update your `.python-version` file:
+
+    ```bash
+    echo "3.13" > .python-version
+    git add .python-version
+    git commit -m "Upgrade from Python 3.10 to 3.13"
+    git push heroku main
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Django errors
+
+<AccordionGroup>
+  <Accordion title="Error: Unable to generate Django static files.">
+    The `python manage.py collectstatic --noinput` command failed during the build.
+
+    **Fix:** Review the traceback printed above the error in the build log. Common causes include:
+
+    - Missing or misconfigured `STATIC_ROOT` setting
+    - A missing or broken static file referenced in templates
+    - An `ImproperlyConfigured` exception from missing environment variables
+    - A `SyntaxError` in application code
+
+    To skip collectstatic while you investigate, set the `DISABLE_COLLECTSTATIC` config var:
+
+    ```bash
+    heroku config:set DISABLE_COLLECTSTATIC=1 -a <app-name>
+    ```
+
+    <Warning>
+    Setting `DISABLE_COLLECTSTATIC=1` means static files will not be collected on deploy. Only use this temporarily while you fix the underlying issue.
+    </Warning>
+
+    For more detail on the environment at the time of failure, set `DEBUG_COLLECTSTATIC=1`:
+
+    ```bash
+    heroku config:set DEBUG_COLLECTSTATIC=1 -a <app-name>
+    ```
+
+    This will print all environment variables to the build log when collectstatic fails.
+
+    See the [Heroku Django assets guide](https://devcenter.heroku.com/articles/django-assets) for further guidance.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Environment and stack errors
+
+<AccordionGroup>
+  <Accordion title="Error: The stack is no longer supported.">
+    The Heroku stack your app is using (e.g. `heroku-20`) has reached its end-of-life.
+
+    **Fix:** Upgrade your app to a supported stack:
+
+    ```bash
+    heroku stack:set heroku-24 -a <app-name>
+    git push heroku main
+    ```
+
+    See the [Heroku stack support details](https://devcenter.heroku.com/articles/stack#stack-support-details) for information on which stacks are supported.
+  </Accordion>
+
+  <Accordion title="Error: The Python buildpack has already been run this build.">
+    A Python installation was found in the build directory from an earlier buildpack run in the same build. This usually means the Python buildpack is listed more than once in your app's buildpack configuration.
+
+    **Fix:** Check your buildpack list and remove any duplicate Python buildpack entries:
+
+    ```bash
+    heroku buildpacks -a <app-name>
+    heroku buildpacks:remove <index> -a <app-name>
+    ```
+  </Accordion>
+
+  <Accordion title="Error: Existing '.heroku/python/' directory found.">
+    Your app's source code contains a `.heroku/python/` directory, which is where the buildpack needs to install Python. This location is reserved for buildpack use.
+
+    **Fix:** If you committed this directory to Git, remove it:
+
+    ```bash
+    git rm -r --cached .heroku/python/
+    echo ".heroku/" >> .gitignore
+    git add .gitignore
+    git commit -m "Remove committed .heroku/python/ directory"
+    git push heroku main
+    ```
+
+    If it is being created by a `bin/pre_compile` hook or an earlier buildpack, update those to write to a different location.
+  </Accordion>
+
+  <Accordion title="Error: Existing '.venv/' or 'venv/' directory found.">
+    A virtual environment directory (`.venv/` or `venv/`) was found in your app's source code. Virtual environments are machine-specific and cannot be used on Heroku.
+
+    **Fix:** Remove the directory from Git and add it to `.gitignore`:
+
+    ```bash
+    git rm --cached -r .venv/   # or venv/
+    echo ".venv/" >> .gitignore
+    git add .gitignore
+    git commit -m "Remove committed .venv/ directory"
+    git push heroku main
+    ```
+  </Accordion>
+</AccordionGroup>
